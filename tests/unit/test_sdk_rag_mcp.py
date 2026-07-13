@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -14,7 +16,7 @@ _SDK = Path(__file__).resolve().parents[2] / "sdk" / "python"
 if str(_SDK) not in sys.path:
     sys.path.insert(0, str(_SDK))
 
-from agenthub.rag import (  # noqa: E402
+from agenthub.rag_mcp import (  # noqa: E402
     CypherResponse,
     DeleteResponse,
     ListIndexesResponse,
@@ -40,14 +42,14 @@ from agenthub.rag import (  # noqa: E402
 def _tool_result(payload: dict[str, Any], *, is_error: bool = False) -> MagicMock:
     result = MagicMock()
     result.isError = is_error
-    result.structuredContent = payload if not is_error else {"message": payload.get("message", "fail")}
+    result.structuredContent = (
+        payload if not is_error else {"message": payload.get("message", "fail")}
+    )
     result.content = []
     return result
 
 
-def _assert_tool_called(
-    mock_session: AsyncMock, name: str, arguments: dict[str, Any]
-) -> None:
+def _assert_tool_called(mock_session: AsyncMock, name: str, arguments: dict[str, Any]) -> None:
     mock_session.call_tool.assert_awaited_once_with(name, arguments=arguments)
 
 
@@ -65,7 +67,7 @@ async def client(mock_session: AsyncMock) -> RagMcpClient:
 
 
 @pytest.fixture(autouse=True)
-async def _reset_default_client() -> None:
+async def _reset_default_client() -> AsyncIterator[None]:
     await close_default_client()
     yield
     await close_default_client()
@@ -217,9 +219,7 @@ class TestCypher:
 
 
 class TestUpsert:
-    async def test_upsert_documents(
-        self, client: RagMcpClient, mock_session: AsyncMock
-    ) -> None:
+    async def test_upsert_documents(self, client: RagMcpClient, mock_session: AsyncMock) -> None:
         docs = [
             {
                 "id": "manual-faq-001",
@@ -240,9 +240,7 @@ class TestUpsert:
 
 
 class TestDelete:
-    async def test_delete_doc_ids(
-        self, client: RagMcpClient, mock_session: AsyncMock
-    ) -> None:
+    async def test_delete_doc_ids(self, client: RagMcpClient, mock_session: AsyncMock) -> None:
         mock_session.call_tool.return_value = _tool_result(
             {"deleted": 2, "not_found": 1, "trace_id": "d1"}
         )
@@ -276,9 +274,7 @@ class TestListIndexes:
             }
         )
         resp = await client.list_indexes(filter={"team": "support"})
-        _assert_tool_called(
-            mock_session, "rag.list_indexes", {"filter": {"team": "support"}}
-        )
+        _assert_tool_called(mock_session, "rag.list_indexes", {"filter": {"team": "support"}})
         assert isinstance(resp, ListIndexesResponse)
         assert resp.indexes[0].name == "kb/support-docs"
         assert resp.indexes[0].total_documents == 12400
@@ -310,7 +306,7 @@ class TestModuleFunctions:
         shared = RagMcpClient(session=mock_session)
         mock_session.call_tool.return_value = _tool_result({"results": [], "trace_id": "m1"})
 
-        import agenthub.rag as ragmod
+        import agenthub.rag_mcp as ragmod
 
         ragmod._default_client = shared
         await search("kb/x", "q")
@@ -320,7 +316,7 @@ class TestModuleFunctions:
         shared = RagMcpClient(session=mock_session)
         mock_session.call_tool.return_value = _tool_result({"results": [], "trace_id": "r"})
 
-        import agenthub.rag as ragmod
+        import agenthub.rag_mcp as ragmod
 
         ragmod._default_client = shared
         await search("kb/a", "one")
@@ -345,7 +341,7 @@ class TestErrors:
         mock_session.call_tool.return_value = _tool_result(
             {"deleted": 1, "not_found": 0, "trace_id": "d"}
         )
-        import agenthub.rag as ragmod
+        import agenthub.rag_mcp as ragmod
 
         ragmod._default_client = shared
         resp = await delete("kb/x", ["doc-1"])
@@ -353,7 +349,7 @@ class TestErrors:
 
     async def test_module_level_upsert_and_list(self, mock_session: AsyncMock) -> None:
         shared = RagMcpClient(session=mock_session)
-        import agenthub.rag as ragmod
+        import agenthub.rag_mcp as ragmod
 
         ragmod._default_client = shared
         mock_session.call_tool.return_value = _tool_result(
@@ -364,11 +360,9 @@ class TestErrors:
         await list_indexes()
         assert mock_session.call_tool.await_count == 2
 
-    async def test_module_level_neighborhood_and_cypher(
-        self, mock_session: AsyncMock
-    ) -> None:
+    async def test_module_level_neighborhood_and_cypher(self, mock_session: AsyncMock) -> None:
         shared = RagMcpClient(session=mock_session)
-        import agenthub.rag as ragmod
+        import agenthub.rag_mcp as ragmod
 
         ragmod._default_client = shared
         mock_session.call_tool.return_value = _tool_result(
@@ -378,3 +372,104 @@ class TestErrors:
         mock_session.call_tool.return_value = _tool_result({"rows": [], "trace_id": "c"})
         await cypher("kb/x", "RETURN 1")
         assert mock_session.call_tool.await_count == 2
+
+
+class TestLifecycle:
+    @pytest.mark.asyncio
+    async def test_concurrent_first_call_creates_single_session(self) -> None:
+        client = RagMcpClient(url="http://127.0.0.1:9090/mcp/rag")
+        session = AsyncMock()
+        session.initialize = AsyncMock()
+        session_cm = AsyncMock()
+        session_cm.__aenter__.return_value = session
+        transport_cm = AsyncMock()
+        transport_cm.__aenter__.return_value = (AsyncMock(), AsyncMock(), None)
+
+        with (
+            patch(
+                "mcp.client.streamable_http.streamablehttp_client", return_value=transport_cm
+            ) as mk_t,
+            patch("mcp.client.session.ClientSession", return_value=session_cm) as mk_s,
+        ):
+            r = await asyncio.gather(client._ensure_session(), client._ensure_session())
+
+        assert r[0] is r[1] is session
+        assert mk_t.call_count == 1
+        assert mk_s.call_count == 1
+        session.initialize.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_failure_during_transport_aenter(self) -> None:
+        client = RagMcpClient(url="http://127.0.0.1:9090/mcp/rag")
+        transport_cm = AsyncMock()
+        transport_cm.__aenter__.side_effect = RuntimeError("transport fail")
+
+        with patch("mcp.client.streamable_http.streamablehttp_client", return_value=transport_cm):
+            with pytest.raises(RuntimeError, match="transport fail"):
+                await client._ensure_session()
+
+        assert client._session is None
+        assert client._session_owned is False
+        assert client._transport_cm is None or client._transport_cm.__aenter__.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_failure_during_session_aenter(self) -> None:
+        client = RagMcpClient(url="http://127.0.0.1:9090/mcp/rag")
+        transport_cm = AsyncMock()
+        transport_cm.__aenter__.return_value = (AsyncMock(), AsyncMock(), None)
+        session_cm = AsyncMock()
+        session_cm.__aenter__.side_effect = RuntimeError("session fail")
+
+        with (
+            patch("mcp.client.streamable_http.streamablehttp_client", return_value=transport_cm),
+            patch("mcp.client.session.ClientSession", return_value=session_cm),
+        ):
+            with pytest.raises(RuntimeError, match="session fail"):
+                await client._ensure_session()
+
+        transport_cm.__aexit__.assert_awaited_once()
+        assert client._session is None
+
+    @pytest.mark.asyncio
+    async def test_failure_during_initialize(self) -> None:
+        client = RagMcpClient(url="http://127.0.0.1:9090/mcp/rag")
+        session = AsyncMock()
+        session.initialize.side_effect = RuntimeError("init fail")
+        session_cm = AsyncMock()
+        session_cm.__aenter__.return_value = session
+        transport_cm = AsyncMock()
+        transport_cm.__aenter__.return_value = (AsyncMock(), AsyncMock(), None)
+
+        with (
+            patch("mcp.client.streamable_http.streamablehttp_client", return_value=transport_cm),
+            patch("mcp.client.session.ClientSession", return_value=session_cm),
+        ):
+            with pytest.raises(RuntimeError, match="init fail"):
+                await client._ensure_session()
+
+        session_cm.__aexit__.assert_awaited_once()
+        transport_cm.__aexit__.assert_awaited_once()
+        assert client._session is None
+
+    @pytest.mark.asyncio
+    async def test_close_on_owned_session(self) -> None:
+        client = RagMcpClient(url="http://127.0.0.1:9090/mcp/rag")
+        session = AsyncMock()
+        session.initialize = AsyncMock()
+        session_cm = AsyncMock()
+        session_cm.__aenter__.return_value = session
+        transport_cm = AsyncMock()
+        transport_cm.__aenter__.return_value = (AsyncMock(), AsyncMock(), None)
+
+        with (
+            patch("mcp.client.streamable_http.streamablehttp_client", return_value=transport_cm),
+            patch("mcp.client.session.ClientSession", return_value=session_cm),
+        ):
+            await client._ensure_session()
+            await client.close()
+            # second close should be no-op
+            await client.close()
+
+        session_cm.__aexit__.assert_awaited_once()
+        transport_cm.__aexit__.assert_awaited_once()
+        assert client._session is None

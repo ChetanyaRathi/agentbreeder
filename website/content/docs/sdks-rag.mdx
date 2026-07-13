@@ -24,7 +24,7 @@ pip install 'agentbreeder-sdk[mcp]'
 ```python
 import asyncio
 
-from agenthub.rag import search
+from agenthub.rag_mcp import search
 
 async def main() -> None:
     response = await search("kb/support-docs", "How do I refund an order?", k=5)
@@ -44,7 +44,7 @@ The module-level functions share a single pooled `RagMcpClient`. Call `close_def
 Fuses vector + graph + BM25 via reciprocal-rank fusion (server-side).
 
 ```python
-from agenthub.rag import search
+from agenthub.rag_mcp import search
 
 response = await search(
     "kb/support-docs",
@@ -64,7 +64,7 @@ print(response.trace_id, len(response.results))
 Vector-only retrieval when you control fusion in agent code. Pass a string (server embeds) or a pre-computed embedding vector.
 
 ```python
-from agenthub.rag import query
+from agenthub.rag_mcp import query
 
 response = await query(
     "kb/support-docs",
@@ -83,7 +83,7 @@ for hit in response.results:
 Walk N hops from a known entity id. Optionally restrict traversal to specific edge types.
 
 ```python
-from agenthub.rag import neighborhood
+from agenthub.rag_mcp import neighborhood
 
 subgraph = await neighborhood(
     "kb/support-docs",
@@ -103,7 +103,7 @@ for node in subgraph.nodes:
 Server validates queries are read-only before forwarding to Neo4j / Neptune.
 
 ```python
-from agenthub.rag import cypher
+from agenthub.rag_mcp import cypher
 
 result = await cypher(
     "kb/support-docs",
@@ -121,7 +121,7 @@ for row in result.rows:
 Idempotent: unchanged documents are skipped via `source_signatures`.
 
 ```python
-from agenthub.rag import upsert
+from agenthub.rag_mcp import upsert
 
 result = await upsert(
     "kb/support-docs",
@@ -144,7 +144,7 @@ print(result.inserted, result.updated, result.skipped, result.trace_id)
 No-op for ids not present.
 
 ```python
-from agenthub.rag import delete
+from agenthub.rag_mcp import delete
 
 result = await delete("kb/support-docs", ["manual-faq-001", "stale-doc-002"])
 print(result.deleted, result.not_found, result.trace_id)
@@ -157,7 +157,7 @@ print(result.deleted, result.not_found, result.trace_id)
 Returns indexes the calling agent has read access to (ACL-filtered).
 
 ```python
-from agenthub.rag import list_indexes
+from agenthub.rag_mcp import list_indexes
 
 catalog = await list_indexes(filter={"team": "customer-success"})
 for idx in catalog.indexes:
@@ -171,7 +171,7 @@ for idx in catalog.indexes:
 Used by AgentOps dashboards and agent-side health checks.
 
 ```python
-from agenthub.rag import stats
+from agenthub.rag_mcp import stats
 
 health = await stats("kb/support-docs")
 print(
@@ -188,7 +188,7 @@ print(
 ## Dedicated client lifecycle
 
 ```python
-from agenthub.rag import RagMcpClient
+from agenthub.rag_mcp import RagMcpClient
 
 async def run() -> None:
     async with RagMcpClient() as client:

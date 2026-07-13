@@ -1,20 +1,15 @@
 """AgentBreeder Python SDK — Full Code tier.
-
 Define, validate, serialize, and deploy agents and orchestrations programmatically.
-
 Usage::
-
     from agenthub import Agent, Tool, Model, Memory
     from agenthub import Orchestration, Pipeline, FanOut, Supervisor
     from agenthub import KeywordRouter, IntentRouter, RoundRobinRouter, ClassifierRouter
-
     agent = (
         Agent("my-agent", version="1.0.0", team="eng")
         .with_model(primary="claude-sonnet-4")
         .with_prompt(system="You are helpful.")
         .with_deploy(cloud="aws")
     )
-
     pipeline = (
         Orchestration("support", strategy="router", team="eng")
         .add_agent("triage", ref="agents/triage")
@@ -45,18 +40,17 @@ from .orchestration import (
     SupervisorConfig,
 )
 from .rag import (
+    IngestResult,
+    RagIndex,
+    RagIndexError,
+)
+from .rag_mcp import (
     CypherResponse,
     DeleteResponse,
-    GraphEdge,
-    GraphNode,
-    IngestResult,
     ListIndexesResponse,
     NeighborhoodResponse,
     RagChunk,
-    RagIndex,
-    RagIndexError,
     RagIndexInfo,
-    RagMcpClient,
     RagMcpError,
     RagMcpToolError,
     RagMcpTransportError,
@@ -76,7 +70,6 @@ from .rag import (
 from .tool import Tool, ToolConfig
 
 __version__ = "0.1.0"
-
 __all__ = [
     # Agent
     "Agent",
@@ -94,15 +87,12 @@ __all__ = [
     "RagIndexError",
     "IngestResult",
     # RAG — MCP tools (#279)
-    "RagMcpClient",
     "RagMcpError",
     "RagMcpTransportError",
     "RagMcpToolError",
     "RagChunk",
     "SearchResponse",
     "NeighborhoodResponse",
-    "GraphNode",
-    "GraphEdge",
     "CypherResponse",
     "UpsertResponse",
     "DeleteResponse",

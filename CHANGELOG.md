@@ -8,6 +8,9 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ## [Unreleased]
 
+### Added
+- **Python SDK**: async `RagMcpClient` wrapping the 8 RAG MCP tools (experimental). (#574)
+
 ### Fixed
 - **Packaging follow-up to issue #560.** `examples/quickstart/*.yaml` now ships
   in the published wheel via hatch `force-include`; `Dockerfile` COPYs
