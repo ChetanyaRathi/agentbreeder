@@ -8,8 +8,22 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
 
 ## [Unreleased]
 
+
 ### Added
 - **Python SDK**: async `RagMcpClient` wrapping the 8 RAG MCP tools (experimental). (#574)
+
+### Changed
+- **Design system extracted into `dashboard/src/styles/brand.css` (#583).** The
+  AgentBreeder brand layer — dark palette, Tailwind v4 `@theme` mapping, brand
+  keyframes (`ab-pulse`, `ab-glow-breathe`), and brand utilities (`gradient-text`,
+  `ab-radial-glow`, `ab-card-glow`, `ab-status-dot`) — moved out of
+  `dashboard/src/index.css` into a dedicated, portable `brand.css` that
+  `index.css` now `@import`s (`@custom-variant`/`@layer base` stay in `index.css`).
+  This is the single source of truth for the brand, consumed OSS → Cloud → Website:
+  the Cloud console vendors a snapshot and drift-checks the `.dark` + `@theme`
+  tokens against it. Pure source-level reorganization — compiled CSS is
+  byte-identical before/after (`npm run build`), zero visual regression.
+
 
 ### Fixed
 - **Packaging follow-up to issue #560.** `examples/quickstart/*.yaml` now ships
@@ -94,6 +108,18 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) an
   canonical `<x>Gi`) valid values.
 
 ### Security
+- **Cleared `dashboard` high-severity advisories via npm `overrides` + a `vite` patch bump** —
+  pinned `hono` to `^4.12.25` (transitive through the `shadcn` CLI → MCP SDK; fixes the IPv6
+  deny-rule bypass, Set-Cookie injection, JWT-scheme, and mount-prefix advisories) and `esbuild`
+  to `^0.28.1` (transitive through `vite`; fixes the Deno-module integrity and dev-server
+  file-read advisories). A second wave of advisories surfaced afterward and is cleared here too:
+  bumped `vite` to `^7.3.5` (fixes the high-severity `launch-editor` NTLMv2 UNC disclosure and the
+  `server.fs.deny` Windows-alternate-path bypass — patched in 7.3.4, **no `vite` 8 major bump**),
+  and added overrides for `@babel/core` `^7.29.7` (transitive through `@vitejs/plugin-react` /
+  `shadcn` / `eslint-plugin-react-hooks`; fixes the sourceMappingURL arbitrary-file-read advisory)
+  and `js-yaml` `^4.2.0` (transitive through `eslint` / `cosmiconfig`; fixes the merge-key
+  quadratic-complexity DoS). All are build/dev-time dependencies not bundled into the shipped app.
+  `npm audit` now reports 0 vulnerabilities, and the dashboard build + 227 tests pass.
 - **Bumped `vitest` to `^4.1.8` in `sdk/typescript`** (was `^1.6.0`), clearing a critical advisory
   (GHSA — Vitest UI server arbitrary file read/execute, fixed in 4.1.0). Dev/test-only dependency;
   all 94 SDK tests pass on the new major. (`dashboard` was already on a patched 4.1.x.)
