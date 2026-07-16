@@ -16,7 +16,7 @@ Usage (HTTP index client)::
 
 Usage (MCP tools — deployed agents)::
 
-    from agenthub.rag import search, upsert
+    from agenthub.rag_mcp import search, upsert
 
     response = await search("kb/support-docs", "How do I refund?", k=5)
     for hit in response.results:
